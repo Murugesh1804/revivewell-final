@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link,useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 function Login({ login }) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,8 +19,14 @@ function Login({ login }) {
         email,
         password
       });
-      
+      console.log(response.data);
       login(response.data.token, response.data.user);
+      
+      if (response.data.user.userType === 'doctor') {
+        navigate('/doctor');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {
@@ -30,7 +37,7 @@ function Login({ login }) {
   return (
     <div className="container" style={{ maxWidth: '500px', marginTop: '50px' }}>
       <div className="card">
-        <h2 className="text-center">Login to ReviveWell</h2>
+        <h2 className="text-center">Login to Healing Horizon</h2>
         
         {error && (
           <div style={{ color: 'red', marginBottom: '15px', textAlign: 'center' }}>

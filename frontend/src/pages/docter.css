@@ -608,3 +608,169 @@
       justify-content: center;
     }
   }
+
+.patient-insights-tab {
+  padding: 20px;
+  background-color: #f9f9f9;
+}
+
+.insights-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 992px) {
+  .insights-container {
+    grid-template-columns: 40% 60%;
+  }
+}
+
+.insights-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.insights-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  height: 100%;
+}
+
+.insights-card h3 {
+  color: #2c3e50;
+  margin-top: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.llm-insights {
+  min-height: 300px;
+}
+
+.insights-content {
+  line-height: 1.6;
+}
+
+.insights-content h1,
+.insights-content h2 {
+  color: #2c3e50;
+  margin-top: 20px;
+}
+
+.insights-content ul {
+  padding-left: 20px;
+}
+
+.insights-content strong {
+  color: #2c3e50;
+}
+
+/* Patient Check-ins Styles */
+.patient-checkins-group {
+  margin-bottom: 30px;
+}
+
+.patient-checkins-group h4 {
+  color: #2c3e50;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.checkins-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.checkin-card {
+  background-color: #f9f9f9;
+  border-radius: 6px;
+  padding: 15px;
+  border-left: 4px solid #3498db;
+}
+
+.checkin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.checkin-time {
+  font-size: 0.85rem;
+  color: #7f8c8d;
+}
+
+.checkin-indicators {
+  display: flex;
+  gap: 10px;
+}
+
+.mood-indicator,
+.cravings-indicator {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: white;
+}
+
+.mood-low {
+  background-color: #e74c3c;
+}
+
+.mood-medium {
+  background-color: #f39c12;
+}
+
+.mood-high {
+  background-color: #2ecc71;
+}
+
+.cravings-low {
+  background-color: #2ecc71;
+}
+
+.cravings-medium {
+  background-color: #f39c12;
+}
+
+.cravings-high {
+  background-color: #e74c3c;
+}
+
+.checkin-details {
+  background-color: white;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.checkin-field {
+  margin-bottom: 8px;
+}
+
+.checkin-field:last-child {
+  margin-bottom: 0;
+}
+
+.checkin-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.action-link {
+  color: #3498db;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.action-link:hover {
+  text-decoration: underline;
+}

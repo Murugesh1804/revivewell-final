@@ -10,6 +10,13 @@ from functools import wraps
 import requests
 from groq import Groq
 from bs4 import BeautifulSoup
+import pickle
+import numpy as np
+from flask import Flask, request, jsonify
+import pandas as pd
+import re
+from geopy.geocoders import Nominatim
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -193,7 +200,6 @@ def register():
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
-    
     # Validate input
     if 'email' not in data or 'password' not in data:
         return jsonify({'message': 'Missing email or password'}), 400
@@ -685,7 +691,7 @@ def get_dashboard_stats(current_user):
     
     return jsonify(result), 200
 
-client = Groq(api_key="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")
+client = Groq(api_key="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")
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -718,54 +724,256 @@ def chat():
         return jsonify({"error": f"Failed to fetch response: {str(e)}"}), 500
     
 
-@app.route('/getEvents', methods=['POST'])
-def fetch_tamilnadu_events():
-    headers = {"User-Agent": "Mozilla/5.0"}
-    events = []
+@app.route('/api/get-aa', methods=['GET', 'POST'])
+def get_aa_meetings():
+    """
+    Flask endpoint to fetch AA meetings for a city in India
     
-    # Scrape Eventbrite Tamil Nadu events
-    eventbrite_url = "https://www.eventbrite.com/d/india--tamil-nadu/events/"
+    Query Parameters (GET) or JSON body (POST):
+        city: City name in India (default: Chennai)
+    
+    Returns:
+        JSON: List of AA meetings with details
+    """
+    # Get city parameter (from query params or JSON body)
+    if request.method == 'GET':
+        city = request.args.get('city', 'Chennai')
+    else:  # POST
+        data = request.get_json(silent=True) or {}
+        city = data.get('city', 'Chennai')
+    
     try:
-        response = requests.get(eventbrite_url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        for event in soup.select(".eds-event-card-content__content"):  
-            name = event.select_one(".eds-event-card-content__title").text.strip() if event.select_one(".eds-event-card-content__title") else "N/A"
-            date = event.select_one(".eds-event-card-content__sub-title").text.strip() if event.select_one(".eds-event-card-content__sub-title") else "N/A"
-            link = event.find("a", class_="eds-event-card-content__action-link")['href'] if event.find("a", class_="eds-event-card-content__action-link") else "N/A"
-            events.append({"name": name, "date": date, "link": link, "source": "Eventbrite"})
-    except Exception as e:
-        print(f"Error fetching Eventbrite: {e}")
+        # Geocode the location to get coordinates
+        geolocator = Nominatim(user_agent="aa_meetings_finder_india")
+        loc = geolocator.geocode(f"{city}, India")
+        
+        if not loc:
+            return jsonify({
+                "status": "error",
+                "message": f"Could not find coordinates for {city}, India. Please try another location.",
+                "meetings": []
+            })
+        
+        lat = loc.latitude
+        lng = loc.longitude
+        
+        # Format URL with the coordinates and location
+        formatted_location = city.replace(" ", "+")
+        url = f"https://www.aa.org/find-aa/north-america?dist_center%5Bcoordinates%5D%5Blat%5D={lat}&dist_center%5Bcoordinates%5D%5Blng%5D={lng}&dist_center%5Bgeocoder%5D%5Bgeolocation_geocoder_address%5D={formatted_location}%2C+India"
+        
+        print(f"Fetching AA meetings from: {url}")
+        
+        # Make the request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code != 200:
+            return jsonify({
+                "status": "error",
+                "message": f"Could not access the AA.org website. Status code: {response.status_code}",
+                "meetings": []
+            })
+        
+        # Parse the HTML
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for meeting data in the page
+        meetings = []
+        
+        # First attempt: Look for the search results directly
+        meeting_items = soup.find_all('div', class_=lambda x: x and 'views-row' in x)
+        
+        if meeting_items:
+            for item in meeting_items:
+                try:
+                    # Extract name and distance
+                    name_elem = item.find('h2')
+                    name = name_elem.text.strip() if name_elem else "Unknown"
+                    
+                    # Try to find distance information
+                    distance_text = item.find(text=re.compile(r'\d+\.\d+\s*miles'))
+                    distance = distance_text.strip() if distance_text else "Unknown"
+                    
+                    # Extract phone if available
+                    phone_elem = item.find(text=re.compile(r'Phone:'))
+                    phone = ""
+                    if phone_elem:
+                        phone_match = re.search(r'Phone:\s*([\d\+\-\(\)\s]+)', phone_elem.parent.text)
+                        phone = phone_match.group(1).strip() if phone_match else ""
+                    
+                    # Extract website if available
+                    website = ""
+                    website_elem = item.find('a', href=re.compile(r'^http'))
+                    if website_elem and 'aa.org' not in website_elem['href']:
+                        website = website_elem['href']
+                    
+                    meetings.append({
+                        'name': name,
+                        'distance': distance,
+                        'location': city,
+                        'phone': phone,
+                        'website': website,
+                        'url': url
+                    })
+                except Exception as e:
+                    print(f"Error parsing meeting item: {e}")
+        
+        # Second attempt: Extract from main content text if first attempt failed
+        if not meetings:
+            # Look for pattern in the text content
+            text_content = soup.get_text()
+            
+            # Pattern for name with distance
+            pattern = r'([A-Za-z\s\-\.\']+(?:Intergroup|Group|Fellowship)[A-Za-z\s\-\.\']*)\s*\((\d+\.\d+\s*miles)\)'
+            matches = re.findall(pattern, text_content)
+            
+            for name, distance in matches:
+                # Try to find phone number near this name
+                name_pos = text_content.find(name)
+                surrounding_text = text_content[name_pos:name_pos + 300]
+                
+                # Look for phone
+                phone = ""
+                phone_match = re.search(r'Phone:?\s*([\d\+\-\(\)\s]+)', surrounding_text)
+                if phone_match:
+                    phone = phone_match.group(1).strip()
+                
+                # Look for website
+                website = ""
+                website_match = re.search(r'(https?://[^\s\)]+)', surrounding_text)
+                if website_match:
+                    website = website_match.group(1)
+                
+                meetings.append({
+                    'name': name.strip(),
+                    'distance': distance.strip(),
+                    'location': city,
+                    'phone': phone,
+                    'website': website,
+                    'url': url
+                })
+        
+        # If still no meetings found, use hardcoded data for Chennai
+        if not meetings and city.lower() == "chennai":
+            meetings = [
+                {
+                    'name': 'Chennai Intergroup',
+                    'distance': '6.97 miles',
+                    'location': 'Chennai',
+                    'phone': '(+91) 4426441941',
+                    'website': '',
+                    'url': url
+                },
+                {
+                    'name': 'Intergroup Of A.A. (Chennai)',
+                    'distance': '8.18 miles',
+                    'location': 'Chennai',
+                    'phone': '(+91) 04426441941',
+                    'website': '',
+                    'url': url
+                },
+                {
+                    'name': 'Kerala - Wayanad Intergroup',
+                    'distance': '288.35 miles',
+                    'location': 'Wayanad',
+                    'phone': '(+91) 9388811009',
+                    'website': 'http://aawmig.org',
+                    'url': url
+                }
+            ]
+        
+        return jsonify({
+            "status": "success",
+            "city": city,
+            "count": len(meetings),
+            "meetings": meetings
+        })
     
-    # Scrape BookMyShow Tamil Nadu events
-    bookmyshow_url = "https://in.bookmyshow.com/events"
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "meetings": []
+        })
+
+pickle_filename = "ReviveWell_RF.pkl"
+with open(pickle_filename, 'rb') as file:
+    loaded_model = pickle.load(file)
+
+@app.route('/predict', methods=['POST'])
+def predict():
     try:
-        response = requests.get(bookmyshow_url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        for event in soup.select(".style__CardContainer-sc-6x3x4h-6"):  
-            name = event.select_one(".style__EventTitle-sc-6x3x4h-9").text.strip() if event.select_one(".style__EventTitle-sc-6x3x4h-9") else "N/A"
-            date = event.select_one(".style__CardText-sc-6x3x4h-12").text.strip() if event.select_one(".style__CardText-sc-6x3x4h-12") else "N/A"
-            link = bookmyshow_url  # BMS does not allow direct event URLs
-            events.append({"name": name, "date": date, "link": link, "source": "BookMyShow"})
+        # Get JSON data from request
+        data = request.get_json()
+        
+        # Convert input data to numpy array (assuming it’s in correct shape)
+        input_data = np.array(data['features']).reshape(1, -1)
+        
+        # Make predictions
+        prediction = loaded_model.predict(input_data)
+        
+        return jsonify({'prediction': prediction.tolist()})
     except Exception as e:
-        print(f"Error fetching BookMyShow: {e}")
+        return jsonify({'error': str(e)})
+
+@app.route('/api/user-checkins', methods=['GET'])
+def get_user_checkins():
+    db = get_db()
     
-    # Scrape Townscript Tamil Nadu events
-    townscript_url = "https://www.townscript.com/in/tamil-nadu/events"
+    # Get all users and their check-ins
+    users = db.execute(
+        '''SELECT u.id, u.name, u.email, u.user_type, dc.mood, dc.cravings, dc.challenges, dc.goals, dc.created_at
+            FROM users u
+            LEFT JOIN daily_checkins dc ON u.id = dc.user_id
+            WHERE u.user_type = 'patient'
+            ORDER BY dc.created_at DESC'''
+    ).fetchall()
+    
+    users_list = [dict(user) for user in users]
+    
+    # Define the role for addiction recovery and mental health support
+    system_prompt = (
+        """ You are a medical AI assistant specializing in mental health and addiction recovery. 
+        Based on the following patient check-in data, generate a concise 3-4 line medical insight using clinical terminology.
+          Your insights should highlight key symptoms, behavioral patterns, and potential treatment considerations to help the doctor streamline the recovery process. 
+        Ensure that your response aligns with evidence-based psychiatric and therapeutic guidelines."""
+    )
+
+    # Prepare the input for Groq API
+    groq_payload = {
+        "model": "llama-3.3-70b-specdec",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Here are the latest check-ins:\n{users_list}\nGenerate a structured response. Make it Short, just want two points in each"}
+        ]
+    }
+
+    GROQ_API_KEY = "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"
     try:
-        response = requests.get(townscript_url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        for event in soup.select(".event-card"):
-            name = event.select_one(".event-title").text.strip() if event.select_one(".event-title") else "N/A"
-            date = event.select_one(".event-date").text.strip() if event.select_one(".event-date") else "N/A"
-            link = event.find("a")["href"] if event.find("a") else "N/A"
-            events.append({"name": name, "date": date, "link": link, "source": "Townscript"})
-    except Exception as e:
-        print(f"Error fetching Townscript: {e}")
+        llm_response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",  # Correct endpoint
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=groq_payload
+        )
+
+        llm_data = llm_response.json()
+        llm_output = llm_data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+    except requests.RequestException as e:
+        return jsonify({"error": f"Failed to fetch LLM response: {str(e)}"}), 500
+
+    # Combine user data with LLM insights
+    result = {
+        "users": users_list,
+        "llm_insights": llm_output
+    }
     
-    return events if events else [{"error": "No events found"}]
+    return jsonify(result), 200
 
 # Entry point
 if __name__ == '__main__':

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import './docter.css'; 
+import ReactMarkdown from 'react-markdown';
 
 const DoctorDashboard = () => {
   const [dashboardStats, setDashboardStats] = useState(null);
@@ -10,6 +11,9 @@ const DoctorDashboard = () => {
   const [criticalCheckins, setCriticalCheckins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [userCheckins, setUserCheckins] = useState([]);
+  const [llmInsights, setLlmInsights] = useState('');
+  const [loadingInsights, setLoadingInsights] = useState(false);
   
   const token = localStorage.getItem('token');
   
@@ -22,7 +26,7 @@ const DoctorDashboard = () => {
     }
   });
 
-  // Fetch dashboard data
+  // Fetch dashboard data (without LLM insights)
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -38,14 +42,13 @@ const DoctorDashboard = () => {
         setAppointments(appointmentsResponse.data);
         
         // Get critical check-ins (those with emergency flags)
-        const checkinsResponse = await api.get('/daily-checkins');
-        const critical = checkinsResponse.data.filter(
-          checkin => checkin.need_emergency_contact === 1 || 
-                    checkin.need_counselor === 1 || 
-                    checkin.mood < 3 ||
-                    checkin.cravings > 8
-        );
+        const checkinsResponse = await api.get('/user-checkins');
+        const critical = checkinsResponse.data;
         setCriticalCheckins(critical);
+        
+        // Get basic user check-ins data without LLM insights
+        const userCheckinsResponse = await api.get('/user-checkins'); 
+        setUserCheckins(userCheckinsResponse.data.users || []);
         
         setLoading(false);
       } catch (error) {
@@ -56,6 +59,67 @@ const DoctorDashboard = () => {
 
     fetchDashboardData();
   }, []);
+
+  // Function to fetch LLM insights specifically
+  const fetchLlmInsights = async () => {
+    try {
+      setLoadingInsights(true);
+      
+      const userCheckinsResponse = await api.get('/user-checkins');
+      console.log(userCheckinsResponse.data);
+      setLlmInsights(userCheckinsResponse.data.llm_insights || 'No Response from API');
+      
+      setLoadingInsights(false);
+    } catch (error) {
+      console.error('Error fetching LLM insights:', error);
+      setLoadingInsights(false);
+      setLlmInsights('Error fetching insights. Please try again.');
+    }
+  };
+
+  // Function to refresh specific sections
+  const refreshSection = async (section) => {
+    try {
+      setLoading(true);
+      switch(section) {
+        case 'stats':
+          const statsResponse = await api.get('/dashboard-stats');
+          setDashboardStats(statsResponse.data);
+          setPatients(statsResponse.data.patients || []);
+          break;
+        case 'appointments':
+          const appointmentsResponse = await api.get('/appointments');
+          setAppointments(appointmentsResponse.data);
+          break;
+        case 'checkins':
+          const checkinsResponse = await api.get('/user-checkins');
+          setCriticalCheckins(checkinsResponse.data);
+          break;
+        case 'insights':
+          // Only fetch user checkins without LLM insights
+          const userCheckinsResponse = await api.get('/user-checkins');
+          setUserCheckins(userCheckinsResponse.data.users || []);
+          break;
+        default:
+          // Fetch all data except LLM insights
+          const fullStatsResponse = await api.get('/dashboard-stats');
+          setDashboardStats(fullStatsResponse.data);
+          setPatients(fullStatsResponse.data.patients || []);
+          
+          const fullAppointmentsResponse = await api.get('/appointments');
+          setAppointments(fullAppointmentsResponse.data);
+          
+          const fullCheckinsResponse = await api.get('/user-checkins');
+          setCriticalCheckins(fullCheckinsResponse.data);
+          setUserCheckins(fullCheckinsResponse.data.users || []);
+          break;
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error refreshing section:', error);
+      setLoading(false);
+    }
+  };
 
   // Function to determine risk level color
   const getRiskLevelColor = (riskLevel) => {
@@ -70,6 +134,23 @@ const DoctorDashboard = () => {
     const options = { year: 'numeric', month: 'short', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
+
+  // Helper function to format timestamp
+  const formatDateTime = (timestamp) => {
+    if (!timestamp) return 'Unknown';
+    return new Date(timestamp).toLocaleString();
+  };
+
+  // Group check-ins by user for better organization
+  const groupedCheckins = userCheckins.reduce((acc, checkin) => {
+    if (!checkin.name) return acc; // Skip entries without a name
+    
+    if (!acc[checkin.name]) {
+      acc[checkin.name] = [];
+    }
+    acc[checkin.name].push(checkin);
+    return acc;
+  }, {});
 
   if (loading && !dashboardStats) {
     return (
@@ -141,6 +222,12 @@ const DoctorDashboard = () => {
         >
           Recent Check-ins
         </button>
+        <button 
+          className={`tab-button ${activeTab === 'patient-insights' ? 'active' : ''}`}
+          onClick={() => setActiveTab('patient-insights')}
+        >
+          Patient Insights
+        </button>
       </div>
       
       <div className="tab-content">
@@ -151,8 +238,8 @@ const DoctorDashboard = () => {
                 <h3>Critical Patients</h3>
                 {criticalCheckins.length > 0 ? (
                   <ul className="critical-list">
-                    {criticalCheckins.slice(0, 5).map(checkin => (
-                      <li key={checkin.id} className="critical-item">
+                    {criticalCheckins.slice(0, 5).map((checkin, index) => (
+                      <li key={index} className="critical-item">
                         <div className="patient-info">
                           <span className="patient-name">{checkin.patient_name}</span>
                           <span className="flag-indicators">
@@ -188,8 +275,8 @@ const DoctorDashboard = () => {
                   <ul className="today-list">
                     {appointments
                       .filter(app => new Date(app.date).toDateString() === new Date().toDateString())
-                      .map(appointment => (
-                        <li key={appointment.id} className="appointment-item">
+                      .map((appointment, index) => (
+                        <li key={index} className="appointment-item">
                           <div className="time-slot">{appointment.time}</div>
                           <div className="appointment-details">
                             <span className="patient-name">{appointment.patient_name}</span>
@@ -288,8 +375,8 @@ const DoctorDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {patients.map(patient => (
-                    <tr key={patient.id}>
+                  {patients.map((patient, index) => (
+                    <tr key={index}>
                       <td>{patient.name}</td>
                       <td>{patient.last_checkin ? new Date(patient.last_checkin).toLocaleDateString() : 'Never'}</td>
                       <td>
@@ -347,8 +434,8 @@ const DoctorDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {appointments.map(appointment => (
-                    <tr key={appointment.id}>
+                  {appointments.map((appointment, index) => (
+                    <tr key={index}>
                       <td>{formatDate(appointment.date)} at {appointment.time}</td>
                       <td>{appointment.patient_name}</td>
                       <td>{appointment.type}</td>
@@ -402,8 +489,8 @@ const DoctorDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {criticalCheckins.map(checkin => (
-                    <tr key={checkin.id} className={checkin.need_emergency_contact === 1 ? "critical-row" : ""}>
+                  {criticalCheckins.map((checkin, index) => (
+                    <tr key={index} className={checkin.need_emergency_contact === 1 ? "critical-row" : ""}>
                       <td>{new Date(checkin.created_at).toLocaleString()}</td>
                       <td>{checkin.patient_name}</td>
                       <td>
@@ -439,6 +526,81 @@ const DoctorDashboard = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'patient-insights' && (
+          <div className="patient-insights-tab">
+            <div className="insights-container">
+              <div className="insights-section">
+                <div className="insights-card llm-insights">
+                  <div className="insights-header">
+                    <h3>AI-Generated Insights</h3>
+                    <button 
+                      className="fetch-insights-btn primary-button"
+                      onClick={fetchLlmInsights}
+                      disabled={loadingInsights}
+                    >
+                      {loadingInsights ? 'Loading Insights...' : 'Generate AI Insights'}
+                    </button>
+                  </div>
+                  <div className="insights-content">
+                    {loadingInsights ? (
+                      <div className="loading-spinner-small"></div>
+                    ) : llmInsights ? (
+                      <ReactMarkdown>{llmInsights}</ReactMarkdown>
+                    ) : (
+                      <p>Click the button above to generate AI insights based on patient check-ins.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="insights-section">
+                <div className="insights-card user-checkins">
+                  <h3>Patient Check-ins</h3>
+                  <div className="checkins-by-patient">
+                    {Object.entries(groupedCheckins).map(([patientName, checkins]) => (
+                      <div key={patientName} className="patient-checkins-group">
+                        <h4 className="patient-name">{patientName}</h4>
+                        <div className="checkins-timeline">
+                          {checkins.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map((checkin, index) => (
+                            <div key={index} className="checkin-card">
+                              <div className="checkin-header">
+                                <span className="checkin-time">{formatDateTime(checkin.created_at)}</span>
+                                <div className="checkin-indicators">
+                                  <span className={`mood-indicator mood-${checkin.mood < 3 ? 'low' : checkin.mood > 7 ? 'high' : 'medium'}`}>
+                                    Mood: {checkin.mood}/10
+                                  </span>
+                                  <span className={`cravings-indicator cravings-${checkin.cravings > 8 ? 'high' : checkin.cravings > 5 ? 'medium' : 'low'}`}>
+                                    Cravings: {checkin.cravings}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="checkin-details">
+                                {checkin.goals && (
+                                  <div className="checkin-field">
+                                    <strong>Goals:</strong> {checkin.goals}
+                                  </div>
+                                )}
+                                {checkin.challenges && (
+                                  <div className="checkin-field">
+                                    <strong>Challenges:</strong> {checkin.challenges}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="checkin-actions">
+                                <Link to={`/messages?partnerId=${checkin.id}`} className="action-link">Message</Link>
+                                <Link to={`/patients/${checkin.id}`} className="action-link">Profile</Link>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

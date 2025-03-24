@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import './style.css'; // You'll need to create this CSS file
+import './style.css'; 
+import ReactMarkdown from "react-markdown";
 
 const PatientDashboard = () => {
     const [dashboardStats, setDashboardStats] = useState(null);
     const [checkins, setCheckins] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [aaMeetings, setAaMeetings] = useState([]);
-    const [llmInsights, setLlmInsights] = useState(null); // Added state for llmInsights
+    const [llmInsights, setLlmInsights] = useState(null); 
     const [loading, setLoading] = useState(true);
     const [checkinForm, setCheckinForm] = useState({
         mood: 5,
@@ -54,8 +55,8 @@ const PatientDashboard = () => {
                 setAppointments(appointmentsResponse.data);
 
                 // Get AA meetings near the location
-                const aaMeetingsResponse = await api.get('/aa-meetings');
-                setAaMeetings(aaMeetingsResponse.data);
+                const aaMeetingsResponse = await api.get('/get-aa');
+                setAaMeetings(aaMeetingsResponse.data.meetings);
                 
                 setLoading(false);
             } catch (error) {
@@ -257,11 +258,13 @@ const PatientDashboard = () => {
                     {aaMeetings.length > 0 ? (
                         <div className="meetings-list">
                             <ul>
-                                {aaMeetings.map(meeting => (
-                                    <li key={meeting.id} className="meeting-item">
+                                {aaMeetings.map((meeting, index) => (
+                                    <li key={index} className="meeting-item">
+                                        <p className="meeting-name">{meeting.name}</p>
                                         <p className="meeting-location">{meeting.location}</p>
-                                        <p className="meeting-time">{meeting.time}</p>
-                                        <p className="meeting-day">{meeting.day}</p>
+                                        <p className="meeting-distance">{meeting.distance}</p>
+                                        <p className="meeting-phone">{meeting.phone}</p>
+                                        <a href={meeting.url} target="_blank" rel="noopener noreferrer">More Info</a>
                                     </li>
                                 ))}
                             </ul>
@@ -353,12 +356,10 @@ const PatientDashboard = () => {
                 
                 {/* New Insights Card */}
                 <div className="dashboard-card insights-card">
-                    <h3>Insights</h3>
-                    {llmInsights ? (
-                        <p>{llmInsights}</p>
-                    ) : (
-                        <p>No insights available.</p>
-                    )}
+                    <h3 className="text-xl font-bold mb-2">Insights</h3>
+                    <div className="prose bg-gray-100 p-4 rounded-md text-gray-800">
+                        <ReactMarkdown>{llmInsights || "No insights available."}</ReactMarkdown>
+                    </div>
                 </div>
             </div>
         </div>

@@ -6,7 +6,7 @@ function Landing() {
     <div className="landing-page">
       <header className="navbar">
         <div className="navbar-container">
-          <Link to="/" className="nav-logo">ReviveWell</Link>
+          <Link to="/" className="nav-logo">HEALING HORIZON</Link>
           <ul className="nav-menu">
             <li className="nav-item">
               <Link to="/login" className="nav-link">Login</Link>
@@ -22,7 +22,7 @@ function Landing() {
         <div className="container">
           <h1>Your Journey to Recovery Starts Here</h1>
           <p>
-            ReviveWell provides personalized support for addiction recovery, 
+            Healing horizon provides personalized support for addiction recovery, 
             connecting you with healthcare professionals and resources to help you 
             achieve lasting wellness.
           </p>
@@ -32,7 +32,7 @@ function Landing() {
       
       <section className="feature-section">
         <div className="container">
-          <h2 className="text-center">How ReviveWell Helps You</h2>
+          <h2 className="text-center">How Healing Horizon Helps You</h2>
           <div className="feature-grid">
             <div className="feature-card">
               <h3>Daily Check-ins</h3>
